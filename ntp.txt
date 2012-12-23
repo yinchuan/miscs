@@ -1,0 +1,25 @@
+ntp
+rhel提供两个包ntp及ntpdate
+ntpdate提供一个可执行程序ntpdate用于将本机时间设置为ntp server的时间，即立刻同步时钟，无需等待。/etc/init.d/ntpdate 执行时会读取/etc/ntp/step-tickers,根据其中设置的ntp server的地址设置本机时钟。
+ntpdate server  设置时钟
+ntpdate -q server   查询，不修改本机
+ntpdate -d server   debug，不修改本机
+
+ntpr提供多个程序
+ntpq -p 可以查看当前与ntp server对时的状态
+/etc/init.d/ntpd运行时读取/etc/ntp.conf，其中设置有ntp server
+ntpd运行时会以64s的周期poll ntp server，计算每一次poll的delay offset jitter，当jitter小于阀值时，认为远程获取的时间为可靠时间，同时如果offset超过阈值，将修改本机时间。如果两个条件不同时满足，将继续poll。jitter值越大，需要poll更多的次数以确认ntp server的可靠性。当ntp server的时间保持稳定时，经过足够多次的poll，jitter值总会减少到阀值。
+以上是根据观察ntpq -p后的猜想。
+更详细的应该阅读ntp的协议。
+
+所以，
+当机器为客户端时，需要修改
+/etc/ntp/stp-tickers
+/etc/ntp.conf
+添加上ntp srever 的地址
+先启动ntpdate 后启动ntpd，ls /etc/rc.d/rc3.d/中也可以看出来
+
+当机器作为服务端时，需要修改
+/etc/ntp.conf
+添加上ntp server，如果作为内网使用，可以将本机作为时间来源。
+仅需要启动 /etc/init.d/ntpd 即可。

@@ -1,0 +1,63 @@
+systemd基本用法
+From: arch linux wiki
+
+nalyzing the system state
+    List running units:
+        $ systemctl
+        $ systemctl list-units
+    List failed units:
+        $ systemctl --failed
+    The available unit files can be seen in
+        /usr/lib/systemd/system/ and
+        /etc/systemd/system/ (the latter takes precedence).
+    You can see list installed unit files by:
+        $ systemctl list-unit-files
+
+Using units
+    Units can be, for example,
+        services (.service),
+        mount points (.mount),
+        devices (.device) or
+        sockets (.socket).
+    When using systemctl, you generally have to specify the complete name of the unit file, including its suffix, for example sshd.socket.
+    There are however a few shortforms when specifying the unit in the following systemctl commands:
+        1. If you don't specify the suffix, systemctl will assume .service. For example, netcfg and netcfg.service are treated equivalent.
+        2. Mount points will automatically be translated into the appropriate .mount unit. For example, specifying /home is equivalent to home.mount.
+        3. Similiar to mount points, devices are automatically translated into the appropriate .device unit, therefore specifying /dev/sda2 is equivalent to dev-sda2.device.
+        See man systemd.unit for details.
+    Activate a unit immediately:
+        # systemctl start <unit>
+    Deactivate a unit immediately:
+        # systemctl stop <unit>
+    Restart a unit:
+        # systemctl restart <unit>
+    Ask a unit to reload its configuration:
+        # systemctl reload <unit>
+    Show the status of a unit, including whether it is running or not:
+        $ systemctl status <unit>
+    Check whether a unit is already enabled or not:
+        $ systemctl is-enabled <unit>
+    Enable a unit to be started on bootup:
+        # systemctl enable <unit>
+    Disable a unit to not start during bootup:
+        # systemctl disable <unit>
+    Show the manual page associated with a unit (this has to be supported by the unit file):
+        $ systemctl help <unit>
+    Reload systemd, scanning for new or changed units:
+        # systemctl daemon-reload
+
+Power management
+    Shut down and reboot the system:
+        $ systemctl reboot
+    Shut down and power-off the system:
+        $ systemctl poweroff
+    Suspend the system:
+        $ systemctl suspend
+    Put the system into hibernation:
+        $ systemctl hibernate
+    Put the system into hybrid-sleep state (or suspend-to-both):
+        $ systemctl hybrid-sleep
+
+Running DEs under systemd
+    systemctl enable gdm
+    systemctl start gdm
