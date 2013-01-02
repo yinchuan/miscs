@@ -61,3 +61,9 @@ Power management
 Running DEs under systemd
     systemctl enable gdm
     systemctl start gdm
+设置/etc/rc.local脚本
+systemd中有rc-local.service支持rc.local
+1. vi /etc/rc.d/rc.local
+rc.local是一个bash脚本，所以第一行应该是 #!/bin/bash
+2. ln -s /etc/rc.d/rc.local /etc/rc.local
+3. systemctl enable rc-local.service
