@@ -173,7 +173,6 @@ I, [2012-12-01T17:06:12.126546 #3611]  INFO -- : worker=7 ready
 以下是一个基本的init脚本，用来在CentOS上stop / start / restart puppet masters的unicorn进程,你可以从[我的Github][4]得到。
 
 ```
-/etc/init.d/puppets-unicorn
 #!/bin/bash
 # unicorn-puppet
 lockfile=/var/lock/puppetmaster-unicorn
