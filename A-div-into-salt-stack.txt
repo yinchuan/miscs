@@ -1,0 +1,217 @@
+# A dive into Salt Stack
+Posted on Jan 10 by opencredo.
+By Maartens Lourens.
+
+Configuration management has been a big leap forward for System Engineers. Not only does it automate the process of systems configuration to make it predictable and repeatable, it also makes it manageable. Configuration management tools usually describe the desired state of infrastructure through version controlled configuration templates. Version controlled configuration, whereby the environment can be rolled back (or forward) to a previous (or subsequent) state, and automated management of an environment's configuration, are both essential features of a Continuous Delivery Pipeline.
+
+The likes of CFEngine, Puppet and Chef (in descending order of age) have become popular config management tools in the Open Source space. I am a longstanding Puppet user, and can vouch for the tremendous improvements in organisation and reliability that it brings to systems automation over custom configuration scripts (I first made the leap in 2009, and the preceding years have come to seem like chaos by comparison …).
+
+But while configuration management is good at describing and enforcing a desired state, it is not so good at querying or setting a state dynamically. This is especially true if the state resources are not under config management already. The traditional Linux sys admin solution is to loop over a list of nodes while issuing a bunch of commands over ssh. This is not only a custom approach prone to error, it is also inefficient because a new ssh session has to be opened in each case. Imagine doing that serially on a 1000 machines! And then I haven't even mentioned the problems with network security, ssh keys, and command execution permissions. The method works of course, but it lacks the framework to make it manageable.
+
+That is where orchestration tools come in. These tools aim to run common and ad hoc realtime actions on large numbers of nodes in parallel. CFEngine, Puppet, and Chef have each looked at different ways of solving the orchestration puzzle. Puppet adopted MCollective as its weapon of choice, and integrated it into its commercial offering.
+
+Recently I have started looking into SaltStack as a solution that does both config management and orchestration. It is a relatively new project started in 2011, but it has a growing fanbase among Sys Admins and DevOps Engineers. In this blog post I will look into Salt as a promising alternative, and comparing it to Puppet as a way of exploring its basic set of features.
+
+## Installation
+In the beginning the world was formless and empty, and darkness was over the systems … and then we installed a configuration manager and all was light! The only trouble is, we had to install dependencies …. and the configuration manager itself had to be configured … and sometimes things got a bit ugly.
+
+Salt makes the installation process surprisingly trouble free on Ubuntu and CentOS, and I believe the same goes for any of the other systems for which an instruction set exists (Arch Linux, Debian, Fedora, RedHat, CentOS, FreeBSD, Gentoo, Windows, Solaris). YMMV. The typical installation process hides unnecessary configuration details from you until you need them. You install the salt master, then the salt minions, point the minions to the master, and off you go. If your salt master's hostname resolves to "salt", you don't even need to point your minions to the master as they will already be good to run.
+
+However, if you were not running one of the above-mentioned distributions or OSes, you will most likely have to roll up your sleeves and get your hands dirty with the installation of a few dependencies. They include Python (>= 2.6 < 3.0), ZeroMQ, pyzmq, PyCrypto, msgpack-python, and YAML bindings for Python.
+
+Puppet, on the other hand, depends only on Ruby and Facter for the most basic install, and the surface area for dependency pain is thereby considerably reduced. However the dependency list can expand to further include augeas-libs, dmidecode, hiera, libselinux-ruby, pciutils, ruby-augeas, ruby-irb, ruby-rdoc, rubygem-json, ruby-shadow, rubygems. So it depends on factors such as the Puppet version and what features you intend to use.
+
+I like the simplicity of the Salt package install. For the cases mentioned it is trivial to set up and get going. If you would like to try it out, simply follow the instructions
+
+If you are like me though and you prefer your provisioning and configuration all in one gift wrapped package, que Vagrant to the rescue and download this project by elasticdog on github
+
+## Configuration Management
+*<b>Configuring State</b>*
+
+Configuration management is Puppet's bread and butter, and this is the first thing I wanted to try out. To my (pleasant) surprise it was dead simple. In Salt, as in Puppet, you can describe the desired state of your system. Indeed Salt calls it a state, and the configuration modules are state modules. The Salt State module files have a .sls extension and can be written in YAML. They are functionally equivalent to the Puppet module manifest files with the .pp extension, written in Puppet DSL.
+
+The Salt master configuration specifies the "file roots", which is comparable to the Puppet "module path", except that it covers both the module root, and the type of environment. So for instance in Salt we can specify the development and test environment configuration directories separately. Note the base environment, which is always required.
+
+file_roots:
+base:
+- /srv/salt/
+dev:
+- /srv/salt/dev
+prod:
+- /srv/salt/prod
+The base environment must contain the top file (called top.sls), which is Salt's entry point into the system. It defines one or more environments, matches nodes through regex, and references the relevant Salt states. The top file is like the nodes file in Puppet. (Puppet's entry point would be the site file, which is not required in Salt).
+
+Suppose I had a Salt master and two minions (which is what is provided by the Elasticdog github) and I want to install mongodb on both minions. As long as the default repositories have mongodb available, it's as simple as one, two, three.
+
+One, specify the node in top.sls.
+
+ dev:
+'minion*.example.com':
+- mongodb
+Two, describe the state in dev/mongodb.sls:
+
+mongodb:
+pkg:
+- installed
+Three, propagate to the salt minions:
+
+# salt 'minion*' state.highstate -v
+Executing job with jid 20121218102842533621
+-------------------------------------------
+
+minion1.example.com:
+----------
+State: - pkg
+Name: mongodb
+Function: installed
+Result: True
+Comment: Package mongodb installed
+Changes: libicu: {'new': '3.6-5.16.1', 'old': ''}
+mongodb: {'new': '1.6.4-1.el5', 'old': ''}
+boost: {'new': '1.33.1-15.el5', 'old': ''}
+js: {'new': '1.70-8.el5', 'old': ''}
+
+minion2.example.com:
+----------
+State: - pkg
+Name: mongodb
+Function: installed
+Result: True
+Comment: Package mongodb installed
+Changes: libicu: {'new': '3.6-5.16.1', 'old': ''}
+mongodb: {'new': '1.6.4-1.el5', 'old': ''}
+boost: {'new': '1.33.1-15.el5', 'old': ''}
+js: {'new': '1.70-8.el5', 'old': ''}
+The configuration description is very similar to Puppet. However the format is quite different. That is because Puppet uses its own ruby-like DSL, whereas Salt uses YAML. It is this difference that accounts for the visual simplicity of Salt's state configuration. YAML is human readable yet easily mapped to data structured, making it suitable for the type of resource descriptions in configuration management. That is not to say that Puppet DSL is unclear or unstructured - it is neither - but it is hard to beat YAML. It can be written quickly and is, in my experience, easier to generate than the Puppet DSL.
+
+Note: There has been a long-running debate in configuration management communities regarding the best way to declare a configuration. There are those who favour leveraging the flexibility of a programming language such as Ruby. Chef is a good example of this approach. Puppet occupies a middle ground. Its DSL is quite powerful, while sticking to functionality relevant to the task at hand. But to give config developers a bit more power, the internal Ruby DSL has been exposed for use. At the other end of the spectrum, Salt's simple YAML state descriptions are very structured. Yet Salt also supports renderers such as JSON, Mako, Wempy, and Jinja to extend its capabilities, and in the future it will have support for XML, raw Python, and others.
+
+## Built in state modules
+I knew that Salt is a much more recent project than Puppet, and I fully expected it to have far fewer built-in modules available. I was wrong: there are loads of modules, including most of the essential ones available in Puppet, such as cron, exec (cmd in Salt), file, group, host, mount, package (pkg in Salt), service, ssh_authorized_key (ssh_auth in Salt), and user.
+
+Nevertheless, Puppet still has the edge in one or two instances. For instance, I am a big fan of Puppet's Augeas module. It allows you to modify (rather than overwrite) an existing config file by treating its contents as a tree of values.
+
+Although Salt has an execution module for Augeas, it unfortunately does not appear to have an Augeas state module yet. True to form though, Salt manages to bring a few tricks of its own to the party, such as builtin state modules for git, hg, and svn.
+
+## Templating
+Puppet has a powerful templating system out of the box. It has the concept of a file resource and a template resource, and those resources go into separate directories in the Puppet module file structure. In Salt, files and templates all go to the same place. You differentiate a template from a pure file resource by specifying the template directive with a type, which can be either jinja, mako, or wempy. As a result you can add logic to your file resource easily. The state file would look as follows:
+
+/etc/myapp.conf:
+file.managed:
+- source: salt://files/myapp.conf
+- mode: 644
+- owner: root
+- group: root
+- template: jinja
+Notice the last line, specifying that the managed file is a jinja template.
+
+The config file then receives the jinja treatment to give it a bit of logic. For instance, let us suppose your application takes the hostname as configuration. Further suppose that on Ubuntu only the hostname is required, but on CentOS the fully qualified domain name is required. This is easy to specify in the template file myapp.conf:
+
+{% if grains['os'] == 'Ubuntu' %}
+host: {{ grains['host'] }}
+{% elif grains['os'] == 'CentOS' %}
+host: {{ grains['fqdn'] }}
+{% endif %}
+The resulting file /etc/myapp.conf would look as follows on the CentOS node minion1:
+
+host: minion1.example.com
+## Variables
+Global variables in Salt cannot be declared on the fly. In this regard Puppet's support for variables is more intuitive and flexible. In Salt, all variables reside in a separate location. Whereas this reduces flexibility, it has the advantage of being orderly. Continuing the salt metaphor, these variables are called "pillars". The location has to be configured in the salt master configuration file:
+
+pillar_roots:
+base:
+- /srv/salt/pillar
+As with state files, you create a top file from where you can include relevant pillar modules.
+
+base:
+'*':
+- packages
+This top file reference a state file called packages.sls, which might look as follows to have variables for the versions of packages you would like installed:
+
+mongodb: mongodb-1.6.4-1
+httpd: httpd-2.2.3-65
+It declares two pillars, mongodb and httpd, that would then be referenced in a state file as follows:
+
+pillar['mongodb']
+pillar['httpd']
+## Dry run
+System administration is a bit like flying a plane. It can be a risky business if you are not careful. Now if I was a biplane pilot and had to perform a dangerous aerial manoeuvre, I'd probably wish I could simulate the flight first. Unless I was truly brave, like the Red Baron. Anyway, the point is that with Salt you can try before you fly. All you need to do is set the Test interface to True.
+
+# salt 'minion1.example.com' state.highstate -v test=True
+
+minion1.example.com:
+----------
+State: - file
+Name: /etc/myapp.conf
+Function: managed
+Result: None
+Comment: The following values are set to be changed:
+newfile: /etc/myapp.conf
+
+Changes:
+## Conclusion
+When it comes to configuration management, Salt more than holds its own against Puppet. It is remarkably easy to set up, has a minimalist approach to development, and has plenty of features. Overall, there is a sense of being able to get things done without the fuss. The only real problem I found was that connections between the salt-master and a minion would sometimes go AWOL. A read around the web told me that others have experienced it too in this particular version of Salt (0.10.5). We can therefore hope that this annoyance will disappear in future versions.
+
+## Orchestration and remote execution
+### *MCollective*
+MCollective is Puppet's solution for orchestration. It was developed independently by R.I. Pienaar before catching the eye of the good folk at PuppetLabs. MCollective uses a message broker (eg. ActiveMQ) to pass messages along a pub-sub bus, allowing parallel communication that is much faster than using ssh. It is a framework that understands particular messages and can format the response. Puppet and MCollective now work together to provide both configuration management and orchestration under one digital roof.
+
+Nevertheless, despite the advantages of MCollective there are two hurdles that can dampen your enthusiasm. The first is that, for the community version at least, it is only loosely integrated with Puppet. It is a separate package, with its own configuration. In addition you are required to install and configure a broker such as ActiveMQ, which then has to be integrated to work with MCollective. It is not difficult, but neither is it trivial. Finally, you still have to secure the communication channels for your production environments. Unfortunately, this is a bit harder.
+
+MCollective's second problem is its relative lack of default functionality. There are a number of plugins available for download and install (https://github.com/puppetlabs/mcollective-plugins), and it is relatively easy to write your own plugins in Ruby - yet the barriers to doing useful things are a little higher than they should be. Nevertheless, given that the framework is solid and extensible, dabbling in Ruby plugins soon makes the real power of MCollective apparent.
+
+### *Salt*
+Salt, on the other hand, comes into its own with orchestration. It was conceived as a remote execution technology from the get-go, and config management was added later. It uses the lightweight ZeroMQ to handle messaging. The result is that there is no separate setup required. Once Salt is installed, both config management and orchestration works. Not surprisingly, the commands used to drive Salt's state modules and execution modules are syntactically similar and therefore intuitive. In the case of Puppet and MCollective, separate utilities and syntax structures apply, which takes more time to learn.
+
+The level of remote execution functionality available out of the box is impressive. The online documentation currently lists over a hundred different builtin execution modules - including one for augeas! (so it must be only a matter of time before it makes its way to the state modules).
+
+As a simple example, consider the generic "cmd.run" module and directive. This is a useful catch-all when you know the command to be run and there is no existing module available to do the same - or you just want to execute a remote command quickly. So, if I want to check which kernel version is running on all the nodes:
+
+[root@salt salt]# salt '*' cmd.run "uname -r"
+minion1.example.com: 2.6.18-274.18.1.el5
+minion2.example.com: 2.6.18-274.18.1.el5
+salt.example.com: 2.6.18-274.18.1.el5
+Or if I want to see disk usage:
+
+salt '*' cmd.run "df -h"
+Incidentally, Salt has a module to cover disk usage, and other disk related queries:
+
+salt '*' disk.usage
+The advantage of using the builtin module, rather than sending a shell command with cmd.run, is that the module usually returns data in a predictable data structure. This can then be used programmatically for automation purposes.
+
+There are plenty of execution modules to satisfy typical administration tasks, such as apt, at, cp, cron, disk, extfs, file, hosts, iptables, mount, network, pam, parted, pkg, ps, selinux, shadow, ssh, and test. There are also numerous modules that cater to specific packages and applications, such as apache, cassandra, djangomod, git, mongodb, mysql, nginx, nova, postgres, solr, sqlite3, and tomcat.
+
+There is even support for executing Puppet routines.
+
+### Conclusion
+There is no doubt that Salt's remote execution is far more polished and functional out of the box than Puppet with MCollective. It allows for dynamic querying and scalable service orchestration. To have a look at the functionality on offer, see the salt execution module documentation.
+
+## Additional functionality
+### *Dashboard*
+Puppet has Puppet dashboard. Salt has no visual interface to speak of yet. I know, we all love the command line. Sometimes though, it's nice to see a screen full of green and to click a few buttons. Seriously though, the dashboard is a good place to get an overview of the state of your managed node network. I didn't see it on the Salt Roadmap, but hopefully it will show up on the radar eventually.
+
+### *Returners*
+Returners are modules called after the minion has returned data. Instead of passing the returned data to the salt master, the module is called and returns the data to another service, usually a database. Salt currently supports returners for cassandra, mongo, redis and mysql. To write a returner for other services can be done easily with a python script.
+
+### *Salt Syndic*
+The Salt documentation describes Salt Syndic as "a powerful tool which allows for the construction of Salt command topologies". What it means in practice is that Salt Syndic allows you to let a Salt master running a Syndic service to connect to a higher level master.
+
+Let's say you have various Salt environments with a master for each of these environments. They could be specific clouds or firewalled networks. Suppose you would like to control the minions in several environments. You can do so with Salt Syndic by installing it on the same host as the masters to be controlled. It creates a passthrough interface, so to the master of masters it looks like it is controlling many minions, but the work is actually spread across many masters. Think of it as commanding a hierarchical army of masters and minions.
+原文这里有一张图片，复制文本时没有复制下来，需要重新下载图片。
+
+
+### *Integration testing*
+Two projects have adopted existing testing frameworks to provide test functionality relevant to Puppet, namely cucumber-puppet (using the Cucumber framework) and rspec-puppet (using RSpec).
+
+Salt takes the approach of providing support for integration tests via a set of integration classes, and the roadmap mentions Unittest2 and pytest for unit testing in the future.
+
+Automated Integration Testing is a neglected area of the Continuous Delivery Pipeline, and it is good to see some builtin support for it. It would be an interesting area to explore in a future blog post.
+
+### Conclusion
+My aim was to find out whether Salt Stack is a viable solution for configuration management and systems orchestration. My approach was to explore its features by finding a match for the most commonly used features in Puppet. The outcome was enlightening. Not only is Salt Stack packed with features, it is also easy to install, use, and extend. It certainly looks like it has a bright future ahead of it.
+
+## Useful links
+The home of Saltstack:	 http://saltstack.org 
+Salt downloads:	 http://saltstack.org/download/ 
+Salt on GitHub:	 https://github.com/saltstack/salt 
+The blog of Salt’s developer:	http://red45.wordpress.com/
